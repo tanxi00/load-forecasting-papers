@@ -15,9 +15,9 @@ selected the 2022-07 to 2023-09 period, aggregated 10-second aggregate
 active power to 15-minute means, converted power to 15-minute energy,
 linearly filled missing intervals, and added coverage/imputation flags.
 
-`data/eia_pjm_hourly_demand.csv` is derived from the U.S. Energy Information
-Administration's EIA-930 Hourly Electric Grid Monitor:
-https://www.eia.gov/electricity/gridmonitor/
+`data/pjm_deok_hourly_2022_2026.csv` is derived from PJM Data Miner 2:
+https://dataminer2.pjm.com/feed/hrl_load_metered
 
-The source is U.S. government public-domain data. Missing hourly values were
-linearly filled and identified with `is_imputed`.
+The series is the DEOK transmission zone and remains subject to PJM's terms
+of use. Missing hourly values were linearly filled and identified with
+`is_imputed`.

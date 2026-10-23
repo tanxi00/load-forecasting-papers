@@ -2,24 +2,16 @@
 """Download recent replacement data and prepare compact forecasting series.
 
 Plegma is the recent household-load replacement for the paper's Sceaux
-dataset.  PJM demand from EIA-930 replaces the paper's older Kentucky/PJM
-series.  Plegma source timestamps use a fixed UTC+03 clock.
+dataset. Plegma source timestamps use a fixed UTC+03 clock. The PJM DEOK
+series is downloaded by ``download_pjm_deok.py``.
 """
 
 from __future__ import annotations
 
 import argparse
-import csv
-import json
-import os
 from pathlib import Path
-from urllib.parse import urlencode
-from urllib.request import Request, urlopen
 
 import pandas as pd
-
-
-EIA_ENDPOINT = "https://api.eia.gov/v2/electricity/rto/region-data/data/"
 
 
 def prepare_plegma(
@@ -100,79 +92,6 @@ def prepare_plegma(
         house01.to_csv(output_dir / "plegma_house01_15min.csv", index=False)
 
 
-def download_pjm(output_path: Path, api_key: str, start: str, end: str) -> None:
-    """Download hourly PJM demand from EIA's public v2 API."""
-    rows: list[dict[str, object]] = []
-    offset = 0
-    page_size = 5000
-
-    while True:
-        params = [
-            ("frequency", "hourly"),
-            ("data[0]", "value"),
-            ("facets[respondent][]", "PJM"),
-            ("facets[type][]", "D"),
-            ("start", start),
-            ("end", end),
-            ("sort[0][column]", "period"),
-            ("sort[0][direction]", "asc"),
-            ("offset", str(offset)),
-            ("length", str(page_size)),
-            ("api_key", api_key),
-        ]
-        request = Request(
-            f"{EIA_ENDPOINT}?{urlencode(params)}",
-            headers={"User-Agent": "load-forecasting-papers/1.0"},
-        )
-        with urlopen(request, timeout=90) as response:
-            payload = json.load(response)
-
-        data = payload["response"]["data"]
-        rows.extend(data)
-        total = int(payload["response"]["total"])
-        offset += len(data)
-        print(f"PJM: downloaded {offset:,} / {total:,}")
-        if not data or offset >= total:
-            break
-
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    with output_path.open("w", newline="", encoding="utf-8") as stream:
-        writer = csv.writer(stream)
-        writer.writerow(["period", "respondent", "type", "demand_mw"])
-        for row in rows:
-            writer.writerow(
-                [
-                    row["period"],
-                    row["respondent"],
-                    row["type"],
-                    row["value"],
-                ]
-            )
-
-    frame = pd.read_csv(output_path)
-    frame = frame.drop_duplicates("period").sort_values("period")
-    frame["demand_mw"] = pd.to_numeric(frame["demand_mw"], errors="coerce")
-    frame["period"] = pd.to_datetime(frame["period"], format="%Y-%m-%dT%H")
-    full_period = pd.date_range(
-        frame["period"].min(),
-        frame["period"].max(),
-        freq="h",
-    )
-    frame = frame.set_index("period").reindex(full_period)
-    frame.index.name = "period"
-    frame["respondent"] = frame["respondent"].fillna("PJM")
-    frame["type"] = frame["type"].fillna("D")
-    frame["demand_mw_raw"] = frame["demand_mw"]
-    frame["demand_mw"] = frame["demand_mw"].interpolate(method="time")
-    frame["is_imputed"] = frame["demand_mw_raw"].isna().astype(int)
-    frame = frame[
-        ["respondent", "type", "demand_mw_raw", "demand_mw", "is_imputed"]
-    ].reset_index()
-    frame["period"] = frame["period"].dt.strftime("%Y-%m-%dT%H")
-    frame.to_csv(output_path, index=False)
-    print(f"PJM: saved {len(frame):,} hourly rows")
-
-
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -180,16 +99,9 @@ def main() -> None:
         type=Path,
         help="Path containing House_01 ... House_13 directories",
     )
-    parser.add_argument(
-        "--eia-api-key",
-        default=os.getenv("EIA_API_KEY"),
-        help="EIA API key; defaults to the EIA_API_KEY environment variable",
-    )
     parser.add_argument("--output-dir", type=Path, default=Path("data"))
     parser.add_argument("--plegma-start", default="2022-07-01 00:00:00")
     parser.add_argument("--plegma-end", default="2023-09-30 23:59:50")
-    parser.add_argument("--pjm-start", default="2022-01-01T00")
-    parser.add_argument("--pjm-end", default="2024-12-31T23")
     parser.add_argument(
         "--houses",
         nargs="*",
@@ -206,15 +118,8 @@ def main() -> None:
             args.plegma_end,
             args.houses,
         )
-    if args.eia_api_key:
-        download_pjm(
-            args.output_dir / "eia_pjm_hourly_demand.csv",
-            args.eia_api_key,
-            args.pjm_start,
-            args.pjm_end,
-        )
-    if not args.plegma_root and not args.eia_api_key:
-        parser.error("Provide --plegma-root and/or EIA_API_KEY")
+    if not args.plegma_root:
+        parser.error("Provide --plegma-root")
 
 
 if __name__ == "__main__":

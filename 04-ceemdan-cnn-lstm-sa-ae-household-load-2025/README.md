@@ -25,22 +25,25 @@ request.”，公开检索也未找到作者代码仓库。
 | 原论文角色 | 替代数据 | 覆盖期 | 分辨率 |
 |---|---|---|---|
 | Sceaux 单户负荷 | Plegma `House_01` | 2022-07 至 2023-09 | 10 秒聚合成 15 分钟 |
-| Kentucky/PJM 区域负荷 | EIA-930 PJM 小时需求 | 2022-01 至 2024-12 | 小时 |
+| Kentucky/PJM 区域负荷 | PJM `DEOK` 小时负荷 | 2022-01 至 2026-10 | 小时 |
 
 Plegma 数据包含希腊 13 户家庭，许可为 CC BY 4.0。这里的
 `House_01` 被作为主单户序列，完整 13 户聚合结果也保留在
 `data/plegma_all_households_15min.csv`。
 
-EIA 的 `demand_mw` 来自 EIA-930 小时需求。EIA 原始值标为每小时 MWh，
-其数值与小时平均 MW 相同，因此保留字段名 `demand_mw`。
+论文中的“Kentucky dataset”与 PJM `DEOK` zone 高度吻合：原始 Kaggle
+文件有 57,739 条，范围为 2012-01-01 至 2018-08-03；论文写 57,740 条，
+仅相差 1 条。因此近年数据也从 PJM Data Miner 2 的 `DEOK` zone 获取。
 
 ## 文件
 
 - `data/plegma_house01_15min.csv`：论文式单户 15 分钟主实验数据。
 - `data/plegma_all_households_15min.csv`：13 户 15 分钟数据，便于扩展成
   多户实验。
-- `data/eia_pjm_hourly_demand.csv`：PJM 2022-2024 小时需求。
+- `data/pjm_deok_hourly_2022_2026.csv`：PJM DEOK 2022 年至 2026-10 的
+  小时负荷。
 - `scripts/download_and_prepare.py`：官方数据处理脚本。
+- `scripts/download_pjm_deok.py`：PJM Data Miner 2 的 DEOK 下载脚本。
 
 Plegma 列：
 
@@ -51,22 +54,33 @@ Plegma 列：
 - `raw_load_kw`：插值前的原始聚合值。
 - `is_imputed`：`1` 表示因缺失而使用线性插值填充。
 
-`eia_pjm_hourly_demand.csv` 同时保留 `demand_mw_raw` 和插值后的
+`pjm_deok_hourly_2022_2026.csv` 同时保留 `demand_mw_raw` 和插值后的
 `demand_mw`，并通过 `is_imputed` 标识填充值。
+
+PJM DEOK 文件包含 42,119 个连续小时，UTC 范围为
+2022-01-01 05:00 至 2026-10-22 03:00，对应 Eastern Prevailing Time
+2022-01-01 00:00 至 2026-10-21 23:00。各年度行数为 8,760、8,760、
+8,784、8,760、7,055；本次下载数据没有缺失小时，因此 `is_imputed`
+全部为 0。
 
 ## 复现
 
 1. 从
    `https://doi.org/10.15129/3b01a6c6-2efd-424a-b8b8-5fe7fa445ded`
    下载 `PlegmaDataset_Clean.7z`，解压得到 `House_01` 至 `House_13`。
-2. 从 <https://www.eia.gov/opendata/> 申请免费 API key。
+2. 从 <https://apiportal.pjm.com/> 申请免费 Data Miner 2 API key。
 3. 运行：
 
 ```bash
 python scripts/download_and_prepare.py \
   --plegma-root /path/to/Clean_Dataset \
-  --eia-api-key "$EIA_API_KEY" \
   --output-dir data
+
+python scripts/download_pjm_deok.py \
+  --api-key "$PJM_API_KEY" \
+  --start 2022-01-01 \
+  --end 2026-10-22 \
+  --output data/pjm_deok_hourly_2022_2026.csv
 ```
 
 ## 训练注意
@@ -87,7 +101,7 @@ python scripts/download_and_prepare.py \
   DOI `10.15129/3b01a6c6-2efd-424a-b8b8-5fe7fa445ded`, CC BY 4.0.
 - Plegma descriptor: Athanasoulias et al., *Scientific Data* 11, 376
   (2024), DOI `10.1038/s41597-024-03208-0`.
-- EIA-930 Hourly Electric Grid Monitor:
-  <https://www.eia.gov/electricity/gridmonitor/>, U.S. public-domain data.
+- PJM Data Miner 2, Hourly Load: Metered:
+  <https://dataminer2.pjm.com/feed/hrl_load_metered>.
 
 再分发派生 CSV 时请保留上述署名与来源链接。
