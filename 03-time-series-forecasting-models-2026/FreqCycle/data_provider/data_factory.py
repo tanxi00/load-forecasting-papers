@@ -14,6 +14,9 @@ data_dict = {
 def data_provider(args, flag):
     Data = data_dict[args.data]
     timeenc = 0 if args.embed != 'timeF' else 1
+    custom_kwargs = {}
+    if Data is Dataset_Custom:
+        custom_kwargs['paper_split'] = getattr(args, 'paper_split', False)
 
     if flag == 'test':
         shuffle_flag = False
@@ -43,7 +46,8 @@ def data_provider(args, flag):
             target=args.target,
             timeenc=timeenc,
             freq=freq,
-            cycle=args.cycle
+            cycle=args.cycle,
+            **custom_kwargs
         )
     else:
          data_set = Data(
@@ -56,7 +60,8 @@ def data_provider(args, flag):
             timeenc=timeenc,
             freq=freq,
             cycle=args.every_Cycle ,
-            stride=args.Cycle_stride
+            stride=args.Cycle_stride,
+            **custom_kwargs
          )    
     print(flag, len(data_set))
     data_loader = DataLoader(

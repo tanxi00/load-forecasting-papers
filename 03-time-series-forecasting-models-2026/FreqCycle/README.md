@@ -49,9 +49,29 @@ bash scripts/FreqCycle/etth1.sh
 bash scripts/MFreqCycle/etth2.sh
 ```
 
+### WPuQ household load experiment
 
+This experiment replaces the Plegma household series with the aggregate
+household load derived from the raw WPuQ 2019 and 2020 hourly HDF5 files.
+The preparation script selects households present in both years with zero
+missing hourly observations, aggregates their active power, and converts the
+result from W to kW.
 
+Input data:
 
+```text
+data/wpuq_household/wpuq_household_hourly.csv
+```
 
+Run on Windows:
 
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\run_wpuq_household.ps1
+```
 
+The default experiment keeps the FreqCycle paper protocol: 8 past hours
+predict the next hour, the first 80% is used for training, the last 20% is
+used for testing, Adam uses a constant learning rate of 0.001, MSE is the
+loss, and training runs for 100 epochs.
+
+See `data/wpuq_household/README.md` for data provenance and processing details.

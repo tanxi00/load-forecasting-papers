@@ -204,7 +204,8 @@ class Dataset_ETT_minute(Dataset):
 class Dataset_Custom(Dataset):
     def __init__(self, root_path, flag='train', size=None,
                  features='S', data_path='ETTh1.csv',
-                 target='OT', scale=True, timeenc=0, freq='h', cycle=None):
+                 target='OT', scale=True, timeenc=0, freq='h', cycle=None,
+                 paper_split=False):
         # size [seq_len, label_len, pred_len]
         # info
         if size == None:
@@ -226,6 +227,7 @@ class Dataset_Custom(Dataset):
         self.timeenc = timeenc
         self.freq = freq
         self.cycle = cycle
+        self.paper_split = paper_split
 
         self.root_path = root_path
         self.data_path = data_path
@@ -243,12 +245,31 @@ class Dataset_Custom(Dataset):
         cols.remove(self.target)
         cols.remove('date')
         df_raw = df_raw[['date'] + cols + [self.target]]
-        # print(cols)
-        num_train = int(len(df_raw) * 0.7)
-        num_test = int(len(df_raw) * 0.2)
-        num_vali = len(df_raw) - num_train - num_test
-        border1s = [0, num_train - self.seq_len, len(df_raw) - num_test - self.seq_len]
-        border2s = [num_train, num_train + num_vali, len(df_raw)]
+        df_raw['date'] = pd.to_datetime(df_raw['date'])
+        df_raw = df_raw.sort_values('date').reset_index(drop=True)
+
+        if self.paper_split:
+            if self.set_type == 1:
+                raise ValueError('paper_split has no validation set')
+            num_train = int(len(df_raw) * 0.8)
+            border1s = [0, num_train - self.seq_len, num_train - self.seq_len]
+            border2s = [num_train, num_train, len(df_raw)]
+        else:
+            num_train = int(len(df_raw) * 0.7)
+            num_test = int(len(df_raw) * 0.2)
+            num_vali = len(df_raw) - num_train - num_test
+            border1s = [
+                0,
+                num_train - self.seq_len,
+                len(df_raw) - num_test - self.seq_len,
+            ]
+            border2s = [num_train, num_train + num_vali, len(df_raw)]
+
+        if border1s[self.set_type] < 0:
+            raise ValueError('Date split does not leave enough history for seq_len')
+        if border2s[self.set_type] - border1s[self.set_type] < self.seq_len + self.pred_len:
+            raise ValueError('Selected date range is too short for seq_len + pred_len')
+
         border1 = border1s[self.set_type]
         border2 = border2s[self.set_type]
 
@@ -282,6 +303,7 @@ class Dataset_Custom(Dataset):
         self.data_x = data[border1:border2]
         self.data_y = data[border1:border2]
         self.data_stamp = data_stamp
+        self.data_dates = df_raw['date'].iloc[border1:border2].reset_index(drop=True)
 
         # add cycle
         self.cycle_index = (np.arange(len(data)) % self.cycle)[border1:border2]

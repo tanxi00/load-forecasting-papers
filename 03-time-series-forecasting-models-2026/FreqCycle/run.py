@@ -26,6 +26,8 @@ parser.add_argument('--target', type=str, default='OT', help='target feature in 
 parser.add_argument('--freq', type=str, default='h',
                     help='freq for time features encoding, options:[s:secondly, t:minutely, h:hourly, d:daily, b:business days, w:weekly, m:monthly], you can also use more detailed freq like 15min or 3h')
 parser.add_argument('--checkpoints', type=str, default='./checkpoints/', help='location of model checkpoints')
+parser.add_argument('--paper_split', action='store_true',
+                    help='use the paper protocol: first 80%% train, last 20%% test, no validation set')
 
 # forecasting task
 parser.add_argument('--seq_len', type=int, default=96, help='input sequence length')
@@ -118,6 +120,9 @@ parser.add_argument('--test_flop', action='store_true', default=False, help='See
 
 args = parser.parse_args()
 
+if args.paper_split and (args.seq_len != 8 or args.label_len != 0 or args.pred_len != 1):
+    parser.error('--paper_split requires --seq_len 8 --label_len 0 --pred_len 1')
+
 # random seed
 fix_seed = args.random_seed
 random.seed(fix_seed)
@@ -136,12 +141,13 @@ print('Args in experiment:')
 print(args)
 
 Exp = Exp_Main
+split_tag = 'paper80' if args.paper_split else 'default'
 
 if args.is_training:
     for ii in range(args.itr):
 
         # setting record of experiments
-        setting = '{}_{}_{}_ft{}_sl{}_pl{}_cycle{}_{}_seed{}'.format(
+        setting = '{}_{}_{}_ft{}_sl{}_pl{}_cycle{}_{}_{}_seed{}'.format(
             args.model_id,
             args.model,
             args.data,
@@ -150,6 +156,7 @@ if args.is_training:
             args.pred_len,
             args.cycle,
             args.model_type,
+            split_tag,
             fix_seed)
 
         exp = Exp(args)  # set experiments
@@ -166,7 +173,7 @@ if args.is_training:
         torch.cuda.empty_cache()
 else:
     ii = 0
-    setting = '{}_{}_{}_ft{}_sl{}_pl{}_cycle{}_{}_seed{}'.format(
+    setting = '{}_{}_{}_ft{}_sl{}_pl{}_cycle{}_{}_{}_seed{}'.format(
         args.model_id,
         args.model,
         args.data,
@@ -175,6 +182,7 @@ else:
         args.pred_len,
         args.cycle,
         args.model_type,
+        split_tag,
         fix_seed)
 
     exp = Exp(args)  # set experiments

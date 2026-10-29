@@ -105,7 +105,11 @@ class Exp_Main(Exp_Basic):
 
     def train(self, setting):
         train_data, train_loader = self._get_data(flag='train')
-        vali_data, vali_loader = self._get_data(flag='val')
+        paper_split = getattr(self.args, 'paper_split', False)
+        if paper_split:
+            vali_data, vali_loader = None, None
+        else:
+            vali_data, vali_loader = self._get_data(flag='val')
         test_data, test_loader = self._get_data(flag='test')
 
         path = os.path.join(self.args.checkpoints, setting)
@@ -115,7 +119,8 @@ class Exp_Main(Exp_Basic):
         time_now = time.time()
 
         train_steps = len(train_loader)
-        early_stopping = EarlyStopping(patience=self.args.patience, verbose=True)
+        if not paper_split:
+            early_stopping = EarlyStopping(patience=self.args.patience, verbose=True)
 
         model_optim = self._select_optimizer()
         criterion = self._select_criterion()
@@ -213,15 +218,20 @@ class Exp_Main(Exp_Basic):
 
             print("Epoch: {} cost time: {}".format(epoch + 1, time.time() - epoch_time))
             train_loss = np.average(train_loss)
-            vali_loss = self.vali(vali_data, vali_loader, criterion)
             test_loss = self.vali(test_data, test_loader, criterion)
 
-            print("Epoch: {0}, Steps: {1} | Train Loss: {2:.7f} Vali Loss: {3:.7f} Test Loss: {4:.7f}".format(
-                epoch + 1, train_steps, train_loss, vali_loss, test_loss))
-            early_stopping(vali_loss, self.model, path)
-            if early_stopping.early_stop:
-                print("Early stopping")
-                break
+            if paper_split:
+                print("Epoch: {0}, Steps: {1} | Train Loss: {2:.7f} Test Loss: {3:.7f}".format(
+                    epoch + 1, train_steps, train_loss, test_loss))
+                torch.save(self.model.state_dict(), path + '/checkpoint.pth')
+            else:
+                vali_loss = self.vali(vali_data, vali_loader, criterion)
+                print("Epoch: {0}, Steps: {1} | Train Loss: {2:.7f} Vali Loss: {3:.7f} Test Loss: {4:.7f}".format(
+                    epoch + 1, train_steps, train_loss, vali_loss, test_loss))
+                early_stopping(vali_loss, self.model, path)
+                if early_stopping.early_stop:
+                    print("Early stopping")
+                    break
 
             if self.args.lradj != 'TST':
                 adjust_learning_rate(model_optim, scheduler, epoch + 1, self.args)
@@ -303,9 +313,9 @@ class Exp_Main(Exp_Basic):
                 if i % 1 == 0:
                     input = batch_x.detach().cpu().numpy()
                     gt = np.concatenate((input[0, :, -1], true[0, :, -1]), axis=0)
-                    pd = np.concatenate((input[0, :, -1], pred[0, :, -1]), axis=0)
-                    visual(gt, pd, os.path.join(folder_path, str(i) + '.pdf'))
-                    np.savetxt(os.path.join(folder_path, str(i) + '.txt'), pd)
+                    pred_plot = np.concatenate((input[0, :, -1], pred[0, :, -1]), axis=0)
+                    visual(gt, pred_plot, os.path.join(folder_path, str(i) + '.pdf'))
+                    np.savetxt(os.path.join(folder_path, str(i) + '.txt'), pred_plot)
                     np.savetxt(os.path.join(folder_path, str(i) + 'true.txt'), gt)
 
         if self.args.test_flop:
@@ -317,6 +327,12 @@ class Exp_Main(Exp_Basic):
 
         preds = preds.reshape(-1, preds.shape[-2], preds.shape[-1])
         trues = trues.reshape(-1, trues.shape[-2], trues.shape[-1])
+        preds = test_data.inverse_transform(
+            preds.reshape(-1, preds.shape[-1])
+        ).reshape(preds.shape)
+        trues = test_data.inverse_transform(
+            trues.reshape(-1, trues.shape[-1])
+        ).reshape(trues.shape)
         # inputx = inputx.reshape(-1, inputx.shape[-2], inputx.shape[-1])
 
         # result save
@@ -324,18 +340,35 @@ class Exp_Main(Exp_Basic):
         if not os.path.exists(folder_path):
             os.makedirs(folder_path)
 
-        mae, mse, rmse, mape, mspe, rse, corr = metric(preds, trues)
-        print('mse:{}, mae:{}'.format(mse, mae))
+        mae, mse, rmse, mape, mspe, rse, corr, r2 = metric(preds, trues)
+        metrics = {
+            'mae': mae,
+            'rmse': rmse,
+            'mape_percent': mape * 100,
+            'r2': r2,
+            'mse': mse,
+        }
+        print(
+            'mae:{:.6f}, rmse:{:.6f}, mape:{:.6f}%, r2:{:.6f}, mse:{:.6f}'.format(
+                mae, rmse, mape * 100, r2, mse
+            )
+        )
+        pd.DataFrame([metrics]).to_csv(
+            os.path.join(folder_path, 'metrics.csv'), index=False
+        )
         f = open("result.txt", 'a')
         f.write(setting + "  \n")
-        f.write('mse:{}, mae:{}'.format(mse, mae))
+        f.write(
+            'mae:{:.6f}, rmse:{:.6f}, mape:{:.6f}%, r2:{:.6f}, mse:{:.6f}'.format(
+                mae, rmse, mape * 100, r2, mse
+            )
+        )
         f.write('\n')
         f.write('\n')
         f.close()
 
-        # np.save(folder_path + 'metrics.npy', np.array([mae, mse, rmse, mape, mspe,rse, corr]))
-        # np.save(folder_path + 'pred.npy', preds)
-        # np.save(folder_path + 'true.npy', trues)
+        np.save(folder_path + 'pred.npy', preds)
+        np.save(folder_path + 'true.npy', trues)
         # np.save(folder_path + 'x.npy', inputx)
         return
 
